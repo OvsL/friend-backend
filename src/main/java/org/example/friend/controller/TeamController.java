@@ -13,10 +13,7 @@ import org.example.friend.common.ResultUtils;
 import org.example.friend.exception.BusinessException;
 import org.example.friend.model.domain.Team;
 import org.example.friend.model.domain.User;
-import org.example.friend.model.request.TeamAddRequest;
-import org.example.friend.model.request.TeamJoinRequest;
-import org.example.friend.model.request.TeamQueryRequest;
-import org.example.friend.model.request.TeamUpdateRequest;
+import org.example.friend.model.request.*;
 import org.example.friend.model.vo.TeamUserVo;
 import org.example.friend.service.TeamService;
 import org.example.friend.service.UserService;
@@ -57,7 +54,7 @@ public class TeamController {
     }
 
     /**
-     * 删除团队
+     * 删除团队(管理员）
      */
     @PostMapping("/delete")
     @Operation(summary = "删除团队", description = "删除指定ID的团队")
@@ -163,12 +160,26 @@ public class TeamController {
      */
     @PostMapping("/exit")
     @Operation(summary = "退出团队", description = "用户退出指定团队")
-    public BaseResponse<Boolean> exitTeam(@RequestBody TeamJoinRequest teamJoinRequest, HttpServletRequest request) {
-        if (teamJoinRequest == null) {
+    public BaseResponse<Boolean> exitTeam(@RequestBody TeamExitRequest teamExitRequest, HttpServletRequest request) {
+        if (teamExitRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User loginUser = userService.getLoginUser(request);
-        boolean result = teamService.exitTeam(teamJoinRequest, loginUser);
+        boolean result = teamService.exitTeam(teamExitRequest, loginUser);
         return ResultUtils.success(result);
     }
+    /**
+     * 解散队伍
+     */
+    @PostMapping("/dismiss")
+    @Operation(summary = "解散队伍", description = "用户解散指定队伍")
+    public BaseResponse<Boolean> dismissTeam(@RequestBody TeamExitRequest teamExitRequest, HttpServletRequest request) {
+        if (teamExitRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        boolean result = teamService.dismissTeam(teamExitRequest, loginUser);
+        return ResultUtils.success(result);
+    }
+
 }

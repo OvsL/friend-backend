@@ -5,10 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.example.friend.model.domain.Team;
 import com.baomidou.mybatisplus.extension.service.IService;
 import org.example.friend.model.domain.User;
-import org.example.friend.model.request.TeamAddRequest;
-import org.example.friend.model.request.TeamJoinRequest;
-import org.example.friend.model.request.TeamQueryRequest;
-import org.example.friend.model.request.TeamUpdateRequest;
+import org.example.friend.model.request.*;
 import org.example.friend.model.vo.TeamUserVo;
 
 import java.util.List;
@@ -33,7 +30,7 @@ public interface TeamService extends IService<Team> {
      */
     long addTeam(TeamAddRequest teamAddRequest, User loginUser);
     /**
-     * 删除队伍
+     * 删除队伍(管理员）
      */
     boolean deleteTeam(TeamUpdateRequest teamUpdateRequest, User loginUser);
     /**
@@ -54,4 +51,14 @@ public interface TeamService extends IService<Team> {
      * 加入队伍
      */
     boolean joinTeam(TeamJoinRequest teamJoinRequest, User loginUser);
+
+    /**
+     * 退出队伍
+     */
+    boolean exitTeam(TeamExitRequest teamExitRequest, User loginUser);
+
+    /**
+     * 解散队伍
+     */
+    boolean dismissTeam(TeamExitRequest teamExitRequest, User loginUser);
 }

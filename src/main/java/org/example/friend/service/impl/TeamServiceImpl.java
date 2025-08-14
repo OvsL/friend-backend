@@ -193,7 +193,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return removeById(teamId);
     }
     /**
-     * 更新队伍(管理员）
+     * 更新队伍
      */
     @Override
     public boolean updateTeam(TeamUpdateRequest teamUpdateRequest, User loginUser) {
@@ -209,7 +209,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (!team.getUserId().equals(loginUser.getId()) || !userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH);
         }
-        if(team.getStatus() == TeamStatusEnum.SECRET.getValue()){
+        if(teamUpdateRequest.getStatus() == TeamStatusEnum.SECRET.getValue()){
             if(teamUpdateRequest.getPassword() == null || teamUpdateRequest.getPassword().isEmpty()){
                 throw new BusinessException(ErrorCode.PARAMS_ERROR, "加密队伍必须设置密码");
             }
@@ -248,6 +248,9 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return list(queryWrapper);
     }
 
+    /**
+     * 搜索队伍
+     */
     @Override
     public List<TeamUserVo> listTeams(TeamQueryRequest teamQueryRequest, boolean isAdmin) {
         QueryWrapper<Team> queryWrapper = new QueryWrapper<>();

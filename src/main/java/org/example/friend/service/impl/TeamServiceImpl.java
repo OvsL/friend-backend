@@ -224,28 +224,27 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return this.updateById(updateTeam);
     }
     /**
-     * 获取我创建的队伍
-     */
-    private boolean updateById(TeamUpdateRequest teamUpdateRequest) {
-        Team team = getById(teamUpdateRequest.getId());
-        if (team == null) {
-            throw new BusinessException(ErrorCode.NO_AUTH);
-        }
-        team.setTeamName(teamUpdateRequest.getTeamName());
-        team.setDescription(teamUpdateRequest.getDescription());
-        team.setMaxNum(teamUpdateRequest.getMaxNum());
-        team.setStatus(teamUpdateRequest.getStatus());
-        team.setPassword(teamUpdateRequest.getPassword());
-        return updateById(team);
-    }
-    /**
-     * 获取我加入的队伍
+     * 获取我的队伍
      */
     @Override
     public List<Team> listMyTeams(Long id) {
-        QueryWrapper<Team> queryWrapper = new QueryWrapper<Team>();
-        queryWrapper.eq("userId", id);
-        return list(queryWrapper);
+        // 校验用户是否存在
+        if (id == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在");
+        }
+        // 校验用户是否存在
+        User user = userService.getById(id);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户不存在");
+        }
+        QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
+        userTeamQueryWrapper.eq("userId", id);
+        List<UserTeam> userTeamList = userTeamService.list(userTeamQueryWrapper);
+        List<Team> teamList = new ArrayList<>();
+        for(UserTeam userTeam : userTeamList){
+            teamList.add(getTeamById(userTeam.getTeamId()));
+        }
+        return teamList;
     }
 
     /**
@@ -443,6 +442,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "解散队伍失败");
         }
     }
+
 
 }
 

@@ -61,4 +61,5 @@ public interface TeamService extends IService<Team> {
      * 解散队伍
      */
     boolean dismissTeam(TeamExitRequest teamExitRequest, User loginUser);
+
 }

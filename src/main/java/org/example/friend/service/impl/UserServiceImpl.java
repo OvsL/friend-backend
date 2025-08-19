@@ -353,46 +353,54 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         String loginUserTagsStr = loginUser.getTags();
         if (StringUtils.isBlank(loginUserTagsStr)) {
             log.info("当前用户没有标签，返回空列表");
-            // 当前用户没有标签，返回空列表
             return Collections.emptyList();
         }
-//        Set<String> loginUserTags = gson.fromJson(loginUserTagsStr, new TypeToken<Set<String>>() {}.getType());
         Set<String> loginUserTags = gson.fromJson(loginUserTagsStr, TAG_SET_TYPE.getType());
 
-        // 3.查询其他用户（优化查询字段和条件）
+        // 3. 轻量查询（仅ID+Tags）用于相似度计算
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
-        // 优化点1：只查询必要字段，减少IO传输和对象创建
-        queryWrapper.ne("id", loginUser.getId())
-                .select("id", "tags"); // 仅需id和tags字段
-        List<User> userList = this.list(queryWrapper);
+        queryWrapper.select("id", "tags")  // 仅查询必要字段
+                .ne("id", loginUser.getId())
+                .isNotNull("tags");
+        List<User> candidateUsers = userMapper.selectList(queryWrapper);
 
-
-        // 4. 计算相似度并排序
-        return userList.stream()
+        // 4. 计算相似度并筛选
+        List<Object[]> filteredUsers = candidateUsers.stream()
                 .filter(user -> StringUtils.isNotBlank(user.getTags())) // 提前过滤无标签用户
                 .map(user -> {
                     try {
-                        Set<String> userTags = gson.fromJson(user.getTags(), new TypeToken<Set<String>>() {}.getType());
+                        Set<String> userTags = gson.fromJson(user.getTags(), TAG_SET_TYPE.getType());
                         double similarity = AlgorithmUtil.calculateTagsSimilarity(
                                 new ArrayList<>(loginUserTags),
                                 new ArrayList<>(userTags)
                         );
-                        // 优化点2：使用数组代替AbstractMap.SimpleEntry，减少对象开销
-                        return new Object[]{user, similarity};
+                        return new Object[]{user, similarity}; // 使用数组存储减少对象开销
                     } catch (Exception e) {
-                        log.error("解析用户标签失败", e);
+                        log.error("解析用户标签失败 userId={}", user.getId(), e);
                         return null;
                     }
                 })
                 .filter(Objects::nonNull)
-                .filter(arr -> (double) arr[1] > 0)
-                .sorted((arr1, arr2) -> Double.compare((double) arr2[1], (double) arr1[1]))
+                .filter(arr -> (double) arr[1] > 0) // 过滤相似度为0的用户
+                .sorted((arr1, arr2) -> Double.compare((double) arr2[1], (double) arr1[1])) // 降序排序
                 .limit(pageSize)
-                .map(arr -> this.getSafetyUser((User) arr[0]))
+                .toList();
+
+        // 5. 批量查询匹配用户的完整信息
+        List<Long> matchedUserIds = filteredUsers.stream()
+                .map(item -> ((User) ((Object[]) item)[0]).getId())
+                .collect(Collectors.toList());
+
+        if (matchedUserIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 6. 按ID批量查询完整用户信息
+        List<User> completeUsers = userMapper.selectBatchIds(matchedUserIds);
+
+        // 7. 转换为安全用户信息并保持排序
+        return completeUsers.stream()
+                .map(this::getSafetyUser)
                 .collect(Collectors.toList());
     }
 }
-
-
-
-

@@ -1,6 +1,8 @@
 package org.example.friend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -13,13 +15,12 @@ import org.example.friend.exception.BusinessException;
 import org.example.friend.model.domain.User;
 import org.example.friend.service.UserService;
 import org.example.friend.mapper.UserMapper;
+import org.example.friend.util.AlgorithmUtil;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.DigestUtils;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -43,6 +44,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     private static final String salt = "qi";
 
+    private static final Gson gson = new Gson();
+
+    // 优化点2：缓存TypeToken，避免重复创建
+    private static final TypeToken<Set<String>> TAG_SET_TYPE = new TypeToken<Set<String>>() {};
+
+    /**
+     * 用户注册
+     */
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
         // 1. 校验
@@ -95,6 +104,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
         return user.getId();
     }
+    /**
+     * 用户登录
+     */
     @Override
     public User userLogin(String userAccount, String userPassword, HttpServletRequest request) {
         // 1. 校验
@@ -159,9 +171,12 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         safetyUser.setUserStatus(user.getUserStatus());
         safetyUser.setCreateTime(user.getCreateTime());
         safetyUser.setUserRole(user.getUserRole());
+        safetyUser.setTags(user.getTags());
         return safetyUser;
     }
-
+    /**
+     * 用户注销
+     */
     @Override
     public int userLogout(HttpServletRequest request) {
         //移除登录态
@@ -198,7 +213,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     @Override
     public Integer updateUserByAdmin(User user, User loginUser) {
         // 1. 校验权限
-        if (!isAdmin(loginUser)) {
+        if (isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH);
         }
         // 2. 校验参数
@@ -237,8 +252,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
 
     /**
      * 是否为管理员
-     * @param request
-     * @return
      */
     @Override
     public boolean isAdmin(HttpServletRequest request) {
@@ -253,7 +266,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
      */
     @Override
     public boolean isAdmin(User loginUser) {
-        return loginUser != null && loginUser.getUserRole() == ADMIN_ROLE;
+        return loginUser == null || loginUser.getUserRole() != ADMIN_ROLE;
     }
 
     /**
@@ -321,6 +334,62 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         }
         List<User> userList = this.list(queryWrapper);
         return userList.stream().map(this::getSafetyUser).collect(Collectors.toList());
+    }
+
+    /**
+     * 匹配用户
+     */
+    @Override
+    public List<User> matchUsers(long pageSize, User loginUser) {
+        // 1. 校验参数
+        if (pageSize <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NO_AUTH);
+        }
+
+        // 2. 获取当前用户的标签
+        String loginUserTagsStr = loginUser.getTags();
+        if (StringUtils.isBlank(loginUserTagsStr)) {
+            log.info("当前用户没有标签，返回空列表");
+            // 当前用户没有标签，返回空列表
+            return Collections.emptyList();
+        }
+//        Set<String> loginUserTags = gson.fromJson(loginUserTagsStr, new TypeToken<Set<String>>() {}.getType());
+        Set<String> loginUserTags = gson.fromJson(loginUserTagsStr, TAG_SET_TYPE.getType());
+
+        // 3.查询其他用户（优化查询字段和条件）
+        QueryWrapper<User> queryWrapper = new QueryWrapper<>();
+        // 优化点1：只查询必要字段，减少IO传输和对象创建
+        queryWrapper.ne("id", loginUser.getId())
+                .select("id", "tags"); // 仅需id和tags字段
+        List<User> userList = this.list(queryWrapper);
+
+
+        // 4. 计算相似度并排序
+        return userList.stream()
+                .filter(user -> StringUtils.isNotBlank(user.getTags())) // 提前过滤无标签用户
+                .map(user -> {
+                    try {
+                        Set<String> userTags = gson.fromJson(user.getTags(), new TypeToken<Set<String>>() {}.getType());
+                        double similarity = AlgorithmUtil.calculateTagsSimilarity(
+                                new ArrayList<>(loginUserTags),
+                                new ArrayList<>(userTags)
+                        );
+                        // 优化点2：使用数组代替AbstractMap.SimpleEntry，减少对象开销
+                        return new Object[]{user, similarity};
+                    } catch (Exception e) {
+                        log.error("解析用户标签失败", e);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .filter(arr -> (double) arr[1] > 0)
+                .sorted((arr1, arr2) -> Double.compare((double) arr2[1], (double) arr1[1]))
+                .limit(pageSize)
+                .map(arr -> this.getSafetyUser((User) arr[0]))
+                .collect(Collectors.toList());
     }
 }
 

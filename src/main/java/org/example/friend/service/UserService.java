@@ -27,31 +27,50 @@ public interface UserService extends IService<User> {
      * 用户登录
      * @param userAccount  用户账号
      * @param userPassword 用户密码
-     * @param request
      * @return 脱敏后的用户信息
      */
     User userLogin(String userAccount, String userPassword, HttpServletRequest request);
-
+    /**
+     * 用户脱敏
+     */
     User getSafetyUser(User user);
-
+    /**
+     * 用户注销
+     */
     int userLogout(HttpServletRequest request);
 
-
+    /**
+     * 更新用户信息
+     */
     Integer updateUser(User user, User loginUser);
 
+    /**
+     * 管理员更新用户信息
+     */
     Integer updateUserByAdmin(User user, User loginUser);
 
     /**
      * 获取当前登录用户
-     * @param request
-     * @return
      */
     User getLoginUser(HttpServletRequest request);
 
+    /**
+     * 是否为管理员
+     */
     boolean isAdmin(HttpServletRequest request);
 
+    /**
+     * 是否为管理员
+     */
     boolean isAdmin(User loginUser);
 
+    /**
+     * 根据标签搜索用户
+     */
     List<User> searchUsersByTags(List<String> tagNameList);
 
+    /**
+     * 匹配用户
+     */
+    List<User> matchUsers(long pageSize, User loginUser);
 }

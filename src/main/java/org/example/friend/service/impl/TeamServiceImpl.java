@@ -55,7 +55,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
      */
     @Override
     public IPage<Team> pageTeam(Page<Team> page, TeamQueryRequest teamQueryRequest) {
-        QueryWrapper<Team> queryWrapper = new QueryWrapper<Team>();
+        QueryWrapper<Team> queryWrapper = new QueryWrapper<>();
         if (teamQueryRequest != null) {
             queryWrapper.like("teamName", teamQueryRequest.getTeamName());
         }
@@ -183,7 +183,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (team == null) {
             throw new BusinessException(ErrorCode.NULL_ERROR, "队伍不存在");
         }
-        if (!userService.isAdmin(loginUser)) {
+        if (userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH, "无权限");
         }
         // 校验队伍用户关系是否存在
@@ -206,7 +206,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if (team == null) {
             throw new BusinessException(ErrorCode.NULL_ERROR, "队伍不存在");
         }
-        if (!team.getUserId().equals(loginUser.getId()) || !userService.isAdmin(loginUser)) {
+        if (!team.getUserId().equals(loginUser.getId()) || userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH);
         }
         if(teamUpdateRequest.getStatus() == TeamStatusEnum.SECRET.getValue()){
@@ -224,7 +224,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         return this.updateById(updateTeam);
     }
     /**
-     * 获取我的队伍
+     * 获取我创建的队伍
      */
     @Override
     public List<Team> listMyTeams(Long id) {

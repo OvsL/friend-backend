@@ -136,7 +136,7 @@ public class UserController {
     @GetMapping("/search")
     @Operation(summary = "查询用户")
     public BaseResponse<List<User>> searchUsers(String username, HttpServletRequest request) {
-        if (!isAdmin(request)) {
+        if (isAdmin(request)) {
 //            return new ArrayList<>();
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
 
@@ -155,7 +155,7 @@ public class UserController {
     @GetMapping("/delete")
     @Operation(summary = "删除用户")
     public BaseResponse<Boolean> deleteUsers(@RequestBody long id, HttpServletRequest request) {
-        if (!isAdmin(request)) {
+        if (isAdmin(request)) {
 //            return null;
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
@@ -225,13 +225,23 @@ public class UserController {
         return ResultUtils.success(result);
     }
 
+    @GetMapping("/match")
+    @Operation(summary = "匹配用户")
+    public BaseResponse<List<User>> matchUsers(@RequestParam(defaultValue = "10") long pageSize, HttpServletRequest request) {
+        if (request == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        List<User> userList = userService.matchUsers(pageSize, loginUser);
+        return ResultUtils.success(userList);
+    }
 
 
     private boolean isAdmin(HttpServletRequest request) {
         //仅管理员可以查询所有用户
         Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
         User user = (User) userObj;
-        return user != null && user.getUserRole() == ADMIN_ROLE;
+        return user == null || user.getUserRole() != ADMIN_ROLE;
     }
 
 

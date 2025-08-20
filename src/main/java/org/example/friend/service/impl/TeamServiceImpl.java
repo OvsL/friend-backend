@@ -19,13 +19,14 @@ import org.example.friend.mapper.TeamMapper;
 import org.example.friend.service.UserService;
 import org.example.friend.service.UserTeamService;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /**
 * @author Qi
@@ -42,6 +43,8 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
     @Resource
     private UserService userService;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
     /**
      * 根据id查询队伍
      */
@@ -346,30 +349,52 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team>
         if(team.getUserId().equals(loginUser.getId())){
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "不能加入自己的队伍");
         }
-        //判断用户是否已加入队伍
-        QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
-        userTeamQueryWrapper.eq("userId", loginUser.getId());
-        userTeamQueryWrapper.eq("teamId", teamId);
-        UserTeam userTeam = userTeamService.getOne(userTeamQueryWrapper);
-        if(userTeam != null){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户已加入队伍");
+
+        // 分布式锁实现：防止并发加入导致的队伍人数超限
+        String lockKey = "team:join:" + teamId;
+        String lockValue = UUID.randomUUID().toString();
+        try {
+            // 获取锁，设置30秒过期时间（防止死锁）
+            boolean locked = Boolean.TRUE.equals(stringRedisTemplate.opsForValue().setIfAbsent(lockKey, lockValue, 30, TimeUnit.SECONDS));
+            if (!locked) {
+                throw new BusinessException(ErrorCode.SYSTEM_ERROR, "系统繁忙，请稍后再试");
+            }
+
+            // 1. 重新检查队伍人数（分布式环境下的并发安全校验）
+            QueryWrapper<UserTeam> countQueryWrapper = new QueryWrapper<>();
+            countQueryWrapper.eq("teamId", teamId);
+            int count = (int) userTeamService.count(countQueryWrapper);
+            if (count >= team.getMaxNum()) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "队伍人数已满");
+            }
+
+            // 2. 判断用户是否已加入队伍
+            QueryWrapper<UserTeam> userTeamQueryWrapper = new QueryWrapper<>();
+            userTeamQueryWrapper.eq("userId", loginUser.getId()).eq("teamId", teamId);
+            UserTeam userTeam = userTeamService.getOne(userTeamQueryWrapper);
+            if (userTeam != null) {
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "用户已加入队伍");
+            }
+
+            // 3. 判断队伍是否过期
+            if(team.getExpireTime() != null && team.getExpireTime().before(new Date())){
+                throw new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已过期");
+            }
+
+            // 4. 加入队伍
+            UserTeam newUserTeam = new UserTeam();
+            newUserTeam.setUserId(loginUser.getId());
+            newUserTeam.setTeamId(teamId);
+            newUserTeam.setJoinTime(new Date());
+            return userTeamService.save(newUserTeam);
+        } finally {
+            // 使用Lua脚本原子性释放锁，防止误删其他线程的锁
+            String script = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+            stringRedisTemplate.execute(new DefaultRedisScript<>(script, Integer.class),
+                    Collections.singletonList(lockKey), lockValue);
         }
-        //判断队伍人数是否已满
-        int count = (int) userTeamService.count(userTeamQueryWrapper);
-        if(count >= team.getMaxNum()){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "队伍人数已满");
-        }
-        //判断队伍是否过期
-        if(team.getExpireTime() != null && team.getExpireTime().before(new Date())){
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "队伍已过期");
-        }
-        //加入队伍
-        UserTeam newUserTeam = new UserTeam();
-        newUserTeam.setUserId(loginUser.getId());
-        newUserTeam.setTeamId(teamId);
-        newUserTeam.setJoinTime(new Date());
-        return userTeamService.save(newUserTeam);
     }
+
     /**
      * 退出队伍
      */
